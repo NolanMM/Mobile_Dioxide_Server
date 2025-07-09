@@ -92,6 +92,57 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
+        [HttpGet("Get_Stock_Price/{stockSymbol}/{start_time}/{end_time}")]
+        public async Task<IActionResult> GetStockPriceInRange(string stockSymbol, string start_time, string end_time)
+        {
+            try
+            {
+                if (!DateTime.TryParse(start_time, out var startDate) || !DateTime.TryParse(end_time, out var endDate))
+                    return BadRequest("Invalid date format. Use yyyy-MM-dd.");
+
+                if (startDate > endDate)
+                    return BadRequest("Start date must be earlier than or equal to end date.");
+
+                var cacheKey = $"StockPrice_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_with_TA_Company_Information_Gold>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
+                        .Where(s => s.Stock_Symbol == stockSymbol)
+                        .OrderByDescending(s => s.Date)
+                        .Take(365)
+                        .ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                var filteredData = cachedData
+                    .Where(s => s.Date.HasValue && s.Date.Value.Date >= startDate.Date && s.Date.Value.Date <= endDate.Date)
+                    .OrderBy(s => s.Date)
+                    .ToList();
+
+                if (filteredData.Count == 0)
+                    return NotFound($"No stock price data found for {stockSymbol} between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}.");
+
+                _logger.LogInformation("Retrieved stock price for {Symbol} from {Start} to {End} with {Count} records.", stockSymbol, startDate, endDate, filteredData.Count);
+
+                return Ok(filteredData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol {Symbol} in date range {Start} to {End}", stockSymbol, start_time, end_time);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
+
         [HttpGet("Get_News_Sentiment_by_Days/{number_of_days}")]
         public async Task<IActionResult> GetNewsSentimentByDays(int number_of_days)
         {
@@ -307,5 +358,59 @@ namespace Mobile_Server_Dioxide.Controllers
                 return StatusCode(500, "Internal server error while logging in user.");
             }
         }
+
+        [HttpGet("Get_Macro_Historical_by_Days/{number_of_days}")]
+        public async Task<IActionResult> GetMacroHistoricalByDays(int number_of_days)
+        {
+            try
+            {
+                if (number_of_days <= 0)
+                    return BadRequest("Number of days must be greater than 0.");
+
+                var requestStartDate = DateTime.UtcNow.Date.AddDays(-number_of_days);
+                var cacheKey = $"MacroHistoricalDays_{number_of_days}";
+
+                List<Macro_Historical_Silver>? broaderCachedData = null;
+                for (int i = number_of_days; i <= 60; i++) // 60 = max upper bound
+                {
+                    if (_cache.TryGetValue($"MacroHistoricalDays_{i}", out List<Macro_Historical_Silver>? cached))
+                    {
+                        broaderCachedData = cached
+                            .Where(s => s.date.Date >= requestStartDate)
+                            .ToList();
+                        break;
+                    }
+                }
+
+                if (broaderCachedData != null && broaderCachedData.Count > 0)
+                {
+                    return Ok(broaderCachedData);
+                }
+
+                // Fallback: Load from DB
+                var allData = await _dioxieReadDbContext.MacroHistoricalSilver
+                    .Where(s => s.date >= requestStartDate)
+                    .OrderByDescending(s => s.date)
+                    .ToListAsync();
+
+                if (allData == null || allData.Count == 0)
+                    return NotFound($"No macroeconomic data found in the last {number_of_days} days.");
+
+                var cacheOptions = new MemoryCacheEntryOptions()
+                    .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                _cache.Set(cacheKey, allData, cacheOptions);
+
+                _logger.LogInformation("Fetched macroeconomic data for the last {Days} days with {Count} records.", number_of_days, allData.Count);
+
+                return Ok(allData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching macroeconomic data for the last {Days} days.", number_of_days);
+                return StatusCode(500, "Internal server error while fetching macroeconomic data.");
+            }
+        }
+
     }
 }
