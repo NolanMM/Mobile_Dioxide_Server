@@ -1,7 +1,7 @@
-﻿using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Mobile_Server_Dioxide.Context;
+using Mobile_Server_Dioxide.DTOs;
 using Mobile_Server_Dioxide.Entities;
 
 namespace Mobile_Server_Dioxide.Controllers
@@ -98,6 +98,38 @@ namespace Mobile_Server_Dioxide.Controllers
                 return NotFound("No users found in the database.");
 
             return Ok(users);
+        }
+
+        [HttpPost("Register_User")]
+        public async Task<IActionResult> RegisterUser([FromBody] RegisterUserDto newUser)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = new User_DBO
+            {
+                username = newUser.username,
+                password = newUser.password,
+                email = newUser.email,
+                first_name = newUser.first_name,
+                last_name = newUser.last_name,
+                is_superuser = false,
+                is_staff = false,
+                is_active = true,
+                date_joined = DateTimeOffset.UtcNow,
+                last_login = DateTimeOffset.UtcNow
+            };
+
+            _dioxieReadDbContext.UserDbos.Add(user);
+            await _dioxieReadDbContext.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "User registered successfully",
+                user.id,
+                user.username,
+                user.email
+            });
         }
     }
 }
