@@ -34,5 +34,20 @@ namespace Mobile_Server_Dioxide.Controllers
 
             return Ok(symbols);
         }
+
+        [HttpGet("Get_Stock_Price/{stockSymbol}")]
+        public async Task<IActionResult> GetStockPrice(string stockSymbol)
+        {
+            var result = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
+                .Where(s => s.Stock_Symbol == stockSymbol)
+                .OrderByDescending(s => s.Date)
+                .Take(365)
+                .ToListAsync();
+
+            if (result == null || result.Count == 0)
+                return NotFound($"No data found for stock symbol: {stockSymbol}");
+
+            return Ok(result);
+        }
     }
 }
