@@ -7,7 +7,6 @@ namespace Mobile_Server_Dioxide.Entities
     [Table("Company_Information", Schema = "Silver")]
     public class Company_Information_Silver
     {
-        [Key]
         public string? symbol { get; set; }
 
         public double? price { get; set; }

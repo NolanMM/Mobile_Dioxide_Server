@@ -3,7 +3,6 @@ using Mobile_Server_Dioxide.Context;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRouting(options =>
 {
     options.LowercaseUrls = true;
@@ -18,6 +17,14 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<DioxieReadDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead")));
 
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromMinutes(30); // Set session timeout
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+});
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -27,6 +34,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
     app.UseExceptionHandler("/Home/Error");
 }
+
+app.UseCors(options => options
+    .AllowAnyOrigin()
+    .AllowAnyMethod()
+    .AllowAnyHeader());
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

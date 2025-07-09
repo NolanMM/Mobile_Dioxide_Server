@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Mobile_Server_Dioxide.Entities
 {
+    [Table("Historical_Prices_Stock_with_TA_Company_Information", Schema = "Gold")]
     public class Historical_Prices_Stock_with_TA_Company_Information_Gold
     {
         [MaxLength(40)]

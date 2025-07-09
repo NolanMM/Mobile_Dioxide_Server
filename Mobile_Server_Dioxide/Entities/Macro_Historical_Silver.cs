@@ -6,7 +6,6 @@ namespace Mobile_Server_Dioxide.Entities
     [Table("Macro_Historical", Schema = "Silver")]
     public class Macro_Historical_Silver
     {
-        [Key]
         [Column(TypeName = "date")]
         public DateTime date { get; set; }
 
