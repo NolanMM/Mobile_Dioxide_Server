@@ -49,5 +49,29 @@ namespace Mobile_Server_Dioxide.Controllers
 
             return Ok(result);
         }
+
+        [HttpGet("Get_News_Sentiment/{number_of_days}")]
+        public async Task<IActionResult> GetNewsSentimentByDays(int number_of_days)
+        {
+            if (number_of_days <= 0)
+                return BadRequest("Number of days must be greater than 0.");
+
+            var startDate = DateTime.UtcNow.Date.AddDays(-number_of_days);
+
+            var allData = await _dioxieReadDbContext.HistoricalStockNewsSentimentScoreGold
+                .Where(s => !string.IsNullOrEmpty(s.datetime))
+                .OrderByDescending(s => s.id)
+                .ToListAsync();
+
+            var filteredData = allData
+                .Where(s => DateTime.TryParse(s.datetime, out var parsedDate) && parsedDate.Date >= startDate)
+                .ToList();
+
+            if (filteredData.Count == 0)
+                return NotFound($"No sentiment news found in the last {number_of_days} days.");
+
+            return Ok(filteredData);
+        }
+
     }
 }
