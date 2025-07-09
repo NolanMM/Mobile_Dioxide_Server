@@ -50,7 +50,7 @@ namespace Mobile_Server_Dioxide.Controllers
             return Ok(result);
         }
 
-        [HttpGet("Get_News_Sentiment/{number_of_days}")]
+        [HttpGet("Get_News_Sentiment_by_Days/{number_of_days}")]
         public async Task<IActionResult> GetNewsSentimentByDays(int number_of_days)
         {
             if (number_of_days <= 0)
@@ -73,5 +73,19 @@ namespace Mobile_Server_Dioxide.Controllers
             return Ok(filteredData);
         }
 
+        [HttpGet("Get_News_Sentiment_by_Symbol/{symbol}")]
+        public async Task<IActionResult> GetNewsSentiment(string symbol)
+        {
+            var result = await _dioxieReadDbContext.HistoricalStockNewsSentimentScoreGold
+                .Where(s => s.symbol == symbol)
+                .OrderByDescending(s => s.id)
+                .Take(365)
+                .ToListAsync();
+
+            if (result == null || result.Count == 0)
+                return NotFound($"No sentiment news data found for symbol: {symbol}");
+
+            return Ok(result);
+        }
     }
 }
