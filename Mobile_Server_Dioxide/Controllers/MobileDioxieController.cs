@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Mobile_Server_Dioxide.Context;
 using Mobile_Server_Dioxide.Entities;
 
@@ -9,11 +10,6 @@ namespace Mobile_Server_Dioxide.Controllers
     [ApiController]
     public class MobileDioxieController : ControllerBase
     {
-        private static readonly string[] Summaries = new[]
-        {
-            "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-        };
-
         private readonly ILogger<MobileDioxieController> _logger;
         private DioxieReadDbContext _dioxieReadDbContext;
 
@@ -23,17 +19,20 @@ namespace Mobile_Server_Dioxide.Controllers
             _dioxieReadDbContext = dioxieReadDbContext;
         }
 
-        [HttpGet(Name = "GetWeatherForecast")]
-        public IEnumerable<WeatherForecast> Get()
+        [HttpGet("Stock/Symbols/Available")]
+        public async Task<IActionResult> GetAvailableStockSymbols()
         {
-            return Enumerable.Range(1, 5).Select(index => new WeatherForecast
-            {
-                Date = DateOnly.FromDateTime(DateTime.Now.AddDays(index)),
-                TemperatureC = Random.Shared.Next(-20, 55),
-                Summary = Summaries[Random.Shared.Next(Summaries.Length)]
-            })
-            .ToArray();
-        }
+            var symbols = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
+                .Select(s => s.Stock_Symbol)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct()
+                .OrderBy(s => s)
+                .ToListAsync();
 
+            if (symbols == null || symbols.Count == 0)
+                return NotFound("No stock symbols found.");
+
+            return Ok(symbols);
+        }
     }
 }
