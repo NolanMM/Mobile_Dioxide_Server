@@ -131,5 +131,31 @@ namespace Mobile_Server_Dioxide.Controllers
                 user.email
             });
         }
+
+        [HttpPost("Login_User")]
+        public async Task<IActionResult> LoginUser([FromBody] LoginDto login)
+        {
+            if (!ModelState.IsValid)
+                return BadRequest(ModelState);
+
+            var user = await _dioxieReadDbContext.UserDbos
+                .FirstOrDefaultAsync(u => u.username == login.username && u.password == login.password);
+
+            if (user == null)
+                return Unauthorized(new { message = "Invalid username or password." });
+
+            user.last_login = DateTimeOffset.UtcNow;
+            await _dioxieReadDbContext.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Login successful",
+                user.id,
+                user.username,
+                user.email,
+                user.first_name,
+                user.last_name
+            });
+        }
     }
 }
