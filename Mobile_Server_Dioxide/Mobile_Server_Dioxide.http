@@ -1,0 +1,6 @@
+@Mobile_Server_Dioxide_HostAddress = http://localhost:5254
+
+GET {{Mobile_Server_Dioxide_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
