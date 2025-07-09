@@ -4,6 +4,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Mobile_Server_Dioxide.Context;
 using Mobile_Server_Dioxide.DTOs;
 using Mobile_Server_Dioxide.Entities;
+using Mobile_Server_Dioxide.Services.Security_Service;
 
 namespace Mobile_Server_Dioxide.Controllers
 {
@@ -290,10 +291,12 @@ namespace Mobile_Server_Dioxide.Controllers
                 if (emailExists)
                     return Conflict(new { message = $"Email '{newUser.email}' is already registered." });
 
+                string encryptedPassword = AES_Services.Encrypt(newUser.password, newUser.username);
+
                 var user = new User_DBO
                 {
                     username = newUser.username,
-                    password = newUser.password,
+                    password = encryptedPassword,
                     email = newUser.email,
                     first_name = newUser.first_name,
                     last_name = newUser.last_name,
@@ -331,8 +334,9 @@ namespace Mobile_Server_Dioxide.Controllers
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
-                var user = await _dioxieReadDbContext.UserDbos
-                    .FirstOrDefaultAsync(u => u.username == login.username && u.password == login.password);
+                string encryptedPassword = AES_Services.Encrypt(login.password, login.username);
+
+                var user = await _dioxieReadDbContext.UserDbos.FirstOrDefaultAsync(u => u.username == login.username && u.password == encryptedPassword);
 
                 if (user == null)
                     return Unauthorized(new { message = "Invalid username or password." });
