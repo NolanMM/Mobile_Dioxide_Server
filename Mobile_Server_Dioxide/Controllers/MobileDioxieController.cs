@@ -87,5 +87,17 @@ namespace Mobile_Server_Dioxide.Controllers
 
             return Ok(result);
         }
+        [HttpGet("Get_All_Users")]
+        public async Task<IActionResult> GetAllUsers()
+        {
+            var users = await _dioxieReadDbContext.UserDbos
+                .OrderBy(u => u.id)
+                .ToListAsync();
+
+            if (users == null || users.Count == 0)
+                return NotFound("No users found in the database.");
+
+            return Ok(users);
+        }
     }
 }
