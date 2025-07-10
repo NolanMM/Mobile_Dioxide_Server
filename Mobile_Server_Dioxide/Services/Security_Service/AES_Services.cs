@@ -5,15 +5,15 @@ namespace Mobile_Server_Dioxide.Services.Security_Service
 {
     public class AES_Services
     {
-        private static readonly string privatekey = "ByNolanM";
+        private static readonly string privatekey = Environment.GetEnvironmentVariable("AES_KEY") ?? "ByNolanM";
 
-        public static string Encrypt(string str, string public_key)
+        public static string Encrypt(string str)
         {
             try
             {
                 string textToEncrypt = str;
                 string ToReturn = "";
-                string publickey = public_key;
+                string publickey = privatekey;
                 byte[] secretkeyByte = { };
                 secretkeyByte = System.Text.Encoding.UTF8.GetBytes(privatekey);
                 byte[] publickeybyte = { };

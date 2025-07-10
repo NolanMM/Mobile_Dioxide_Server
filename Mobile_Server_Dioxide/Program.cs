@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Mobile_Server_Dioxide.Context;
+using DotNetEnv;
 
 var builder = WebApplication.CreateBuilder(args);
+
+Env.Load();
 
 builder.Services.AddRouting(options =>
 {
@@ -40,7 +43,7 @@ app.UseCors(options => options
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
+app.UseSession();
 app.UseAuthorization();
 
 app.MapControllers();

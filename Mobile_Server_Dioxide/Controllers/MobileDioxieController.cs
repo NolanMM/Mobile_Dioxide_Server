@@ -5,6 +5,8 @@ using Mobile_Server_Dioxide.Context;
 using Mobile_Server_Dioxide.DTOs;
 using Mobile_Server_Dioxide.Entities;
 using Mobile_Server_Dioxide.Services.Security_Service;
+using Mobile_Server_Dioxide.Services.OTP_Module_Services;
+using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace Mobile_Server_Dioxide.Controllers
 {
@@ -15,6 +17,8 @@ namespace Mobile_Server_Dioxide.Controllers
         private readonly ILogger<MobileDioxieController> _logger;
         private DioxieReadDbContext _dioxieReadDbContext;
         private readonly IMemoryCache _cache;
+
+        private static Dictionary<string, Dictionary<string, (string, RegisterUserDto)>> _register_user_list_actives = new Dictionary<string, Dictionary<string, (string, RegisterUserDto)>>();
 
         public MobileDioxieController(ILogger<MobileDioxieController> logger, DioxieReadDbContext dioxieReadDbContext, IMemoryCache cache)
         {
@@ -270,28 +274,102 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
-        [HttpPost("Register_User")]
-        public async Task<IActionResult> RegisterUser([FromBody] RegisterUserDto newUser)
+        [HttpPost("Register_User/Request")]
+        public async Task<IActionResult> RegisterUserRequest([FromBody] RegisterUserDto newUser)
         {
-            try { 
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
+            try
+            {
+                string? sessionId = HttpContext.Session.GetString("SessionId");
+                if (HttpContext.Session.GetString("SessionId") == null)
+                {
+                    sessionId = Guid.NewGuid().ToString();
+                    HttpContext.Session.SetString("SessionId", sessionId);
+               
+                    string currentDateTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
 
-                // Check if username already exists
-                bool usernameExists = await _dioxieReadDbContext.UserDbos
-                    .AnyAsync(u => u.username == newUser.username);
+                    int randomNumber = new Random().Next(100000000, 999999999);
 
-                if (usernameExists)
-                    return Conflict(new { message = $"Username '{newUser.username}' is already taken." });
+                    if (!ModelState.IsValid)
+                        return BadRequest(ModelState);
 
-                // Check if email already exists
-                bool emailExists = await _dioxieReadDbContext.UserDbos
-                    .AnyAsync(u => u.email == newUser.email);
+                    // Check if username already exists
+                    bool usernameExists = await _dioxieReadDbContext.UserDbos
+                        .AnyAsync(u => u.username == newUser.username);
 
-                if (emailExists)
-                    return Conflict(new { message = $"Email '{newUser.email}' is already registered." });
+                    if (usernameExists)
+                        return Conflict(new { message = $"Username '{newUser.username}' is already taken." });
 
-                string encryptedPassword = AES_Services.Encrypt(newUser.password, newUser.username);
+                    // Check if email already exists
+                    bool emailExists = await _dioxieReadDbContext.UserDbos
+                        .AnyAsync(u => u.email == newUser.email);
+
+                    if (emailExists)
+                        return Conflict(new { message = $"Email '{newUser.email}' is already registered." });
+
+                    _register_user_list_actives.Add(
+                        sessionId,
+                        new Dictionary<string, (string, RegisterUserDto)>
+                        {
+                            { randomNumber.ToString(), (currentDateTime, newUser) }
+                        }
+                    );
+
+                    await Verify_Email_Services.Send_OTP_CodeAsync(randomNumber.ToString(), sessionId, newUser.email, newUser.username);
+
+                    return Ok(new
+                    {
+                        message = "User registration request received. Please check your email for the OTP code.",
+                        sessionId,
+                        // For Debugging
+                        otpCode = randomNumber, 
+                        timestamp = currentDateTime
+                    });
+                }
+                else
+                {
+                    _logger.LogWarning("Session ID already exists: {SessionId}", sessionId);
+                    return BadRequest("Session ID already exists. Please wait after next sessions.");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while checking user registration request.");
+                return StatusCode(500, "Internal server error while checking user registration request.");
+            }
+        }
+
+        [HttpGet("Register_User/{OTP_Number}/{SessionID}")]
+        public async Task<IActionResult> RegisterUser(string OTP_Number, string SessionID)
+        {
+            try {
+                Console.WriteLine(OTP_Number);
+                Console.WriteLine(SessionID);
+                if (string.IsNullOrWhiteSpace(OTP_Number) || string.IsNullOrWhiteSpace(SessionID))
+                    return BadRequest("OTP Number and Session ID are required.");
+
+                if (!_register_user_list_actives.TryGetValue(SessionID, out var otpEntries) || !otpEntries.TryGetValue(OTP_Number, out var entry))
+                {
+                    _logger.LogWarning("Invalid OTP or Session ID: {SessionID}, {OTP_Number}", SessionID, OTP_Number);
+                    return BadRequest("Invalid OTP Number or Session ID.");
+                }
+                string requestDateTime = entry.Item1;
+
+                if (!DateTime.TryParse(requestDateTime, out var requestDateTimeParsed))
+                {
+                    _logger.LogWarning("Invalid request date time format: {RequestDateTime}", requestDateTime);
+                    return BadRequest("Invalid request date time format.");
+                }
+                if ((DateTime.UtcNow - requestDateTimeParsed).TotalMinutes > 5)
+                {
+                    _logger.LogWarning("OTP expired for Session ID: {SessionID}, OTP Number: {OTP_Number}", SessionID, OTP_Number);
+                    _register_user_list_actives[SessionID].Remove(OTP_Number);
+                    return BadRequest("OTP has expired. Please request a new one.");
+                }
+
+                RegisterUserDto newUser = entry.Item2;
+
+                string encryptedPassword = AES_Services.Encrypt(newUser.password);
 
                 var user = new User_DBO
                 {
@@ -311,6 +389,7 @@ namespace Mobile_Server_Dioxide.Controllers
                 await _dioxieReadDbContext.SaveChangesAsync();
 
                 _logger.LogInformation("User registered successfully: {Username}", user.username);
+                _register_user_list_actives[SessionID].Remove(OTP_Number);
 
                 return Ok(new
                 {
@@ -334,7 +413,7 @@ namespace Mobile_Server_Dioxide.Controllers
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
-                string encryptedPassword = AES_Services.Encrypt(login.password, login.username);
+                string encryptedPassword = AES_Services.Encrypt(login.password);
 
                 var user = await _dioxieReadDbContext.UserDbos.FirstOrDefaultAsync(u => u.username == login.username && u.password == encryptedPassword);
 
