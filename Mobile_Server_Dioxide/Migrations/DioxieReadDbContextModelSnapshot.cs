@@ -140,6 +140,31 @@ namespace Mobile_Server_Dioxide.Migrations
                     b.ToView(null, (string)null);
                 });
 
+            modelBuilder.Entity("Mobile_Server_Dioxide.Entities.Historical_Prices_Stock_Bronze", b =>
+                {
+                    b.Property<double?>("Close")
+                        .HasColumnType("float");
+
+                    b.Property<DateTime?>("Date")
+                        .HasColumnType("Date");
+
+                    b.Property<double?>("Dividends")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Stock_Splits")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Stock_Symbol")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int?>("Volume")
+                        .HasColumnType("int");
+
+                    b.ToTable("Historical_Prices", "Bronze");
+
+                    b.ToView(null, (string)null);
+                });
+
             modelBuilder.Entity("Mobile_Server_Dioxide.Entities.Historical_Prices_Stock_with_TA_Company_Information_Gold", b =>
                 {
                     b.Property<double?>("Close")

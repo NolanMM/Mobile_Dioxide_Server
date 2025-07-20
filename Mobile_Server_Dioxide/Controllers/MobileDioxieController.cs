@@ -7,6 +7,7 @@ using Mobile_Server_Dioxide.Entities;
 using Mobile_Server_Dioxide.Services.Security_Service;
 using Mobile_Server_Dioxide.Services.OTP_Module_Services;
 using Swashbuckle.AspNetCore.SwaggerGen;
+using System.Globalization;
 
 namespace Mobile_Server_Dioxide.Controllers
 {
@@ -97,6 +98,196 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
+        [HttpGet("Get_Stock_Price_Silver/{stockSymbol}/{start_time}/{end_time}/{type}")]
+        public async Task<IActionResult> GetStockPriceSilverType(string stockSymbol, string start_time, string end_time, string type)
+        {
+            try
+            {
+                if (!DateTime.TryParse(start_time, out var startDate) || !DateTime.TryParse(end_time, out var endDate))
+                    return BadRequest("Invalid date format. Use yyyy-MM-dd.");
+
+                if (startDate > endDate)
+                    return BadRequest("Start date must be earlier than or equal to end date.");
+
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_Silver>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockSilver.Where(s => s.Stock_Symbol == stockSymbol).ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                var filteredData = cachedData.Where(s => s.Date != null &&
+                                                DateTime.TryParseExact(s.Date, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
+                                                parsedDate.Date >= startDate.Date && parsedDate.Date <= endDate.Date)
+                                            .OrderBy(s => DateTime.ParseExact(s.Date!, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
+                                            .ToList();
+
+                if (filteredData.Count == 0)
+                    return NotFound($"No stock price data found for {stockSymbol} between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}.");
+
+                if (type.ToLower() != "open" && type.ToLower() != "high" && type.ToLower() != "low" && type.ToLower() != "close" && type.ToLower() != "volume" && type.ToLower() != "dividends" && type.ToLower() != "stock_splits")
+                    return BadRequest("Invalid type specified. Valid types are: Open, High, Low, Close, Volume, Dividends, Stock_Splits.");
+
+                List<Historical_Prices_By_Type_Dto> returnedData = new List<Historical_Prices_By_Type_Dto>();
+
+                if (type.ToLower() == "open")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Open,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "high")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.High,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "low")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Low,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "close")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Close,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "volume")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Volume,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "dividends")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Dividends,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "stock_splits")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Stock_Splits,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+
+                _logger.LogInformation("Retrieved stock price for {Symbol} from {Start} to {End} with {Count} records.", stockSymbol, startDate, endDate, filteredData.Count);
+
+                return Ok(returnedData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol {Symbol} in date range {Start} to {End}", stockSymbol, start_time, end_time);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
+        [HttpGet("Get_Stock_Price_Silver/{stockSymbol}/{start_time}/{end_time}")]
+        public async Task<IActionResult> GetStockPriceSilver(string stockSymbol, string start_time, string end_time)
+        {
+            try
+            {
+                if (!DateTime.TryParse(start_time, out var startDate) || !DateTime.TryParse(end_time, out var endDate))
+                    return BadRequest("Invalid date format. Use yyyy-MM-dd.");
+
+                if (startDate > endDate)
+                    return BadRequest("Start date must be earlier than or equal to end date.");
+
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_Silver>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockSilver.Where(s => s.Stock_Symbol == stockSymbol).ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                var filteredData = cachedData.Where(s => s.Date != null &&
+                                                DateTime.TryParseExact(s.Date, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
+                                                parsedDate.Date >= startDate.Date && parsedDate.Date <= endDate.Date)
+                                            .OrderBy(s => DateTime.ParseExact(s.Date!, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
+                                            .ToList();
+
+                if (filteredData.Count == 0)
+                    return NotFound($"No stock price data found for {stockSymbol} between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}.");
+
+                _logger.LogInformation("Retrieved stock price for {Symbol} from {Start} to {End} with {Count} records.", stockSymbol, startDate, endDate, filteredData.Count);
+
+                return Ok(filteredData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol {Symbol} in date range {Start} to {End}", stockSymbol, start_time, end_time);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
+        [HttpGet("Get_Stock_Price_Silver/{stockSymbol}")]
+        public async Task<IActionResult> GetStockPriceBronzeInRange(string stockSymbol)
+        {
+            try
+            {
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_Silver>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockSilver.Where(s => s.Stock_Symbol == stockSymbol).ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                _logger.LogInformation("Retrieved stock price for symbol: {Symbol} with {Count} records from cache.", stockSymbol, cachedData?.Count);
+                if (cachedData?.Count == 0)
+                    return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                return Ok(cachedData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol: {Symbol}", stockSymbol);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
         [HttpGet("Get_Stock_Price/{stockSymbol}/{start_time}/{end_time}")]
         public async Task<IActionResult> GetStockPriceInRange(string stockSymbol, string start_time, string end_time)
         {
@@ -108,7 +299,7 @@ namespace Mobile_Server_Dioxide.Controllers
                 if (startDate > endDate)
                     return BadRequest("Start date must be earlier than or equal to end date.");
 
-                var cacheKey = $"StockPrice_{stockSymbol}";
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
 
                 // Check if 365-day cached
                 if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_with_TA_Company_Information_Gold>? cachedData))
@@ -116,7 +307,6 @@ namespace Mobile_Server_Dioxide.Controllers
                     cachedData = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
                         .Where(s => s.Stock_Symbol == stockSymbol)
                         .OrderByDescending(s => s.Date)
-                        .Take(365)
                         .ToListAsync();
 
                     if (cachedData == null || cachedData.Count == 0)
@@ -320,7 +510,8 @@ namespace Mobile_Server_Dioxide.Controllers
                     {
                         message = "User registration request received. Please check your email for the OTP code.",
                         sessionId,
-                        // For Debugging
+                        username = newUser.username,
+                        email = newUser.email,
                         otpCode = randomNumber, 
                         timestamp = currentDateTime
                     });
@@ -495,5 +686,57 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
+        [HttpPost("user/{id}/username")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateUsername(int id, [FromBody] UpdateUsernameDto updateUsernameDto)
+        {
+            var user = await _dioxieReadDbContext.UserDbos.FindAsync(id);
+
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            user.username = updateUsernameDto.Username;
+
+            try
+            {
+                await _dioxieReadDbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw;
+            }
+
+            return Ok(new { message = "Username updated successfully." });
+        }
+
+        [HttpPost("user/{id}/name")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateName(int id, [FromBody] UpdateNameDto updateNameDto)
+        {
+            var user = await _dioxieReadDbContext.UserDbos.FindAsync(id);
+
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            user.first_name = updateNameDto.FirstName;
+            user.last_name = updateNameDto.LastName;
+
+            try
+            {
+                await _dioxieReadDbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw;
+            }
+
+            return Ok(new { message = "User name updated successfully." });
+        }
     }
 }

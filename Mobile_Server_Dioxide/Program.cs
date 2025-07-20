@@ -16,8 +16,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDbContext<DioxieReadDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead")));
+builder.Services.AddDbContext<DioxieReadDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead"), 
+    sqlServerOptions => {
+        sqlServerOptions.CommandTimeout(120);
+    }));
 
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
