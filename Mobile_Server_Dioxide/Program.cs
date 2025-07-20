@@ -1,7 +1,10 @@
 using Microsoft.EntityFrameworkCore;
 using Mobile_Server_Dioxide.Context;
+using DotNetEnv;
 
 var builder = WebApplication.CreateBuilder(args);
+
+Env.Load();
 
 builder.Services.AddRouting(options =>
 {
@@ -13,8 +16,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDbContext<DioxieReadDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead")));
+builder.Services.AddDbContext<DioxieReadDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead"), 
+    sqlServerOptions => {
+        sqlServerOptions.CommandTimeout(120);
+    }));
 
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
@@ -40,7 +45,7 @@ app.UseCors(options => options
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
+app.UseSession();
 app.UseAuthorization();
 
 app.MapControllers();
