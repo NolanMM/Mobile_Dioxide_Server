@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Mobile_Server_Dioxide.Context;
 using DotNetEnv;
+using Mobile_Server_Dioxide.Services.TickerServices;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +29,8 @@ builder.Services.AddSession(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
+builder.Services.AddSingleton<ITickerService, TickerService>();
+
 
 var app = builder.Build();
 

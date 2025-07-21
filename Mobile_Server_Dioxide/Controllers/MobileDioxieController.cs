@@ -8,6 +8,7 @@ using Mobile_Server_Dioxide.Services.Security_Service;
 using Mobile_Server_Dioxide.Services.OTP_Module_Services;
 using Swashbuckle.AspNetCore.SwaggerGen;
 using System.Globalization;
+using Mobile_Server_Dioxide.Services.TickerServices;
 
 namespace Mobile_Server_Dioxide.Controllers
 {
@@ -18,14 +19,16 @@ namespace Mobile_Server_Dioxide.Controllers
         private readonly ILogger<MobileDioxieController> _logger;
         private DioxieReadDbContext _dioxieReadDbContext;
         private readonly IMemoryCache _cache;
+        private readonly ITickerService _tickerService;
 
         private static Dictionary<string, Dictionary<string, (string, RegisterUserDto)>> _register_user_list_actives = new Dictionary<string, Dictionary<string, (string, RegisterUserDto)>>();
 
-        public MobileDioxieController(ILogger<MobileDioxieController> logger, DioxieReadDbContext dioxieReadDbContext, IMemoryCache cache)
+        public MobileDioxieController(ILogger<MobileDioxieController> logger, DioxieReadDbContext dioxieReadDbContext, IMemoryCache cache, ITickerService tickerService)
         {
             _cache = cache;
             _logger = logger;
             _dioxieReadDbContext = dioxieReadDbContext;
+            _tickerService = tickerService;
         }
 
         [HttpGet("Stock/Symbols/Available")]
@@ -36,12 +39,7 @@ namespace Mobile_Server_Dioxide.Controllers
 
                 if (!_cache.TryGetValue(cacheKey, out List<string>? symbols))
                 {
-                    symbols = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
-                        .Select(s => s.Stock_Symbol)
-                        .Where(s => !string.IsNullOrEmpty(s))
-                        .Distinct()
-                        .OrderBy(s => s)
-                        .ToListAsync();
+                    symbols = await _tickerService.GetTickersAsync();
 
                     if (symbols == null || symbols.Count == 0)
                         return NotFound("No stock symbols found.");
