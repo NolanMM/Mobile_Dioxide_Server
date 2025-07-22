@@ -41,6 +41,9 @@ if (app.Environment.IsDevelopment())
     app.UseExceptionHandler("/Home/Error");
 }
 
+app.UseSwagger();
+app.UseSwaggerUI();
+
 app.UseCors(options => options
     .AllowAnyOrigin()
     .AllowAnyMethod()
