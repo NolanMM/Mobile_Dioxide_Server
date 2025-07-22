@@ -1,7 +1,11 @@
 using Microsoft.EntityFrameworkCore;
 using Mobile_Server_Dioxide.Context;
+using DotNetEnv;
+using Mobile_Server_Dioxide.Services.TickerServices;
 
 var builder = WebApplication.CreateBuilder(args);
+
+Env.Load();
 
 builder.Services.AddRouting(options =>
 {
@@ -13,8 +17,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDbContext<DioxieReadDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead")));
+builder.Services.AddDbContext<DioxieReadDbContext>(options => options.UseSqlServer(builder.Configuration.GetConnectionString("DioxieMobileRead"), 
+    sqlServerOptions => {
+        sqlServerOptions.CommandTimeout(120);
+    }));
 
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
@@ -23,6 +29,8 @@ builder.Services.AddSession(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.IsEssential = true;
 });
+builder.Services.AddSingleton<ITickerService, TickerService>();
+
 
 var app = builder.Build();
 
@@ -40,7 +48,7 @@ app.UseCors(options => options
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
+app.UseSession();
 app.UseAuthorization();
 
 app.MapControllers();

@@ -4,6 +4,11 @@ using Microsoft.Extensions.Caching.Memory;
 using Mobile_Server_Dioxide.Context;
 using Mobile_Server_Dioxide.DTOs;
 using Mobile_Server_Dioxide.Entities;
+using Mobile_Server_Dioxide.Services.Security_Service;
+using Mobile_Server_Dioxide.Services.OTP_Module_Services;
+using Swashbuckle.AspNetCore.SwaggerGen;
+using System.Globalization;
+using Mobile_Server_Dioxide.Services.TickerServices;
 
 namespace Mobile_Server_Dioxide.Controllers
 {
@@ -14,12 +19,16 @@ namespace Mobile_Server_Dioxide.Controllers
         private readonly ILogger<MobileDioxieController> _logger;
         private DioxieReadDbContext _dioxieReadDbContext;
         private readonly IMemoryCache _cache;
+        private readonly ITickerService _tickerService;
 
-        public MobileDioxieController(ILogger<MobileDioxieController> logger, DioxieReadDbContext dioxieReadDbContext, IMemoryCache cache)
+        private static Dictionary<string, Dictionary<string, (string, RegisterUserDto)>> _register_user_list_actives = new Dictionary<string, Dictionary<string, (string, RegisterUserDto)>>();
+
+        public MobileDioxieController(ILogger<MobileDioxieController> logger, DioxieReadDbContext dioxieReadDbContext, IMemoryCache cache, ITickerService tickerService)
         {
             _cache = cache;
             _logger = logger;
             _dioxieReadDbContext = dioxieReadDbContext;
+            _tickerService = tickerService;
         }
 
         [HttpGet("Stock/Symbols/Available")]
@@ -30,12 +39,7 @@ namespace Mobile_Server_Dioxide.Controllers
 
                 if (!_cache.TryGetValue(cacheKey, out List<string>? symbols))
                 {
-                    symbols = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
-                        .Select(s => s.Stock_Symbol)
-                        .Where(s => !string.IsNullOrEmpty(s))
-                        .Distinct()
-                        .OrderBy(s => s)
-                        .ToListAsync();
+                    symbols = await _tickerService.GetTickersAsync();
 
                     if (symbols == null || symbols.Count == 0)
                         return NotFound("No stock symbols found.");
@@ -92,6 +96,196 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
+        [HttpGet("Get_Stock_Price_Silver/{stockSymbol}/{start_time}/{end_time}/{type}")]
+        public async Task<IActionResult> GetStockPriceSilverType(string stockSymbol, string start_time, string end_time, string type)
+        {
+            try
+            {
+                if (!DateTime.TryParse(start_time, out var startDate) || !DateTime.TryParse(end_time, out var endDate))
+                    return BadRequest("Invalid date format. Use yyyy-MM-dd.");
+
+                if (startDate > endDate)
+                    return BadRequest("Start date must be earlier than or equal to end date.");
+
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_Silver>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockSilver.Where(s => s.Stock_Symbol == stockSymbol).ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                var filteredData = cachedData.Where(s => s.Date != null &&
+                                                DateTime.TryParseExact(s.Date, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
+                                                parsedDate.Date >= startDate.Date && parsedDate.Date <= endDate.Date)
+                                            .OrderBy(s => DateTime.ParseExact(s.Date!, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
+                                            .ToList();
+
+                if (filteredData.Count == 0)
+                    return NotFound($"No stock price data found for {stockSymbol} between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}.");
+
+                if (type.ToLower() != "open" && type.ToLower() != "high" && type.ToLower() != "low" && type.ToLower() != "close" && type.ToLower() != "volume" && type.ToLower() != "dividends" && type.ToLower() != "stock_splits")
+                    return BadRequest("Invalid type specified. Valid types are: Open, High, Low, Close, Volume, Dividends, Stock_Splits.");
+
+                List<Historical_Prices_By_Type_Dto> returnedData = new List<Historical_Prices_By_Type_Dto>();
+
+                if (type.ToLower() == "open")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Open,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "high")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.High,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "low")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Low,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "close")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Close,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "volume")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Volume,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "dividends")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Dividends,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+                else if (type.ToLower() == "stock_splits")
+                    returnedData = filteredData.Select(s => new Historical_Prices_By_Type_Dto
+                    {
+                        Date = s.Date,
+                        Price = s.Stock_Splits,
+                        Stock_Symbol = s.Stock_Symbol,
+                        Type = type.ToLower()
+                    }).ToList();
+
+                _logger.LogInformation("Retrieved stock price for {Symbol} from {Start} to {End} with {Count} records.", stockSymbol, startDate, endDate, filteredData.Count);
+
+                return Ok(returnedData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol {Symbol} in date range {Start} to {End}", stockSymbol, start_time, end_time);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
+        [HttpGet("Get_Stock_Price_Silver/{stockSymbol}/{start_time}/{end_time}")]
+        public async Task<IActionResult> GetStockPriceSilver(string stockSymbol, string start_time, string end_time)
+        {
+            try
+            {
+                if (!DateTime.TryParse(start_time, out var startDate) || !DateTime.TryParse(end_time, out var endDate))
+                    return BadRequest("Invalid date format. Use yyyy-MM-dd.");
+
+                if (startDate > endDate)
+                    return BadRequest("Start date must be earlier than or equal to end date.");
+
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_Silver>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockSilver.Where(s => s.Stock_Symbol == stockSymbol).ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                var filteredData = cachedData.Where(s => s.Date != null &&
+                                                DateTime.TryParseExact(s.Date, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate) &&
+                                                parsedDate.Date >= startDate.Date && parsedDate.Date <= endDate.Date)
+                                            .OrderBy(s => DateTime.ParseExact(s.Date!, "yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))
+                                            .ToList();
+
+                if (filteredData.Count == 0)
+                    return NotFound($"No stock price data found for {stockSymbol} between {startDate:yyyy-MM-dd} and {endDate:yyyy-MM-dd}.");
+
+                _logger.LogInformation("Retrieved stock price for {Symbol} from {Start} to {End} with {Count} records.", stockSymbol, startDate, endDate, filteredData.Count);
+
+                return Ok(filteredData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol {Symbol} in date range {Start} to {End}", stockSymbol, start_time, end_time);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
+        [HttpGet("Get_Stock_Price_Silver/{stockSymbol}")]
+        public async Task<IActionResult> GetStockPriceBronzeInRange(string stockSymbol)
+        {
+            try
+            {
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
+
+                // Check if 365-day cached
+                if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_Silver>? cachedData))
+                {
+                    cachedData = await _dioxieReadDbContext.HistoricalPricesStockSilver.Where(s => s.Stock_Symbol == stockSymbol).ToListAsync();
+
+                    if (cachedData == null || cachedData.Count == 0)
+                        return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                    var cacheOptions = new MemoryCacheEntryOptions()
+                        .SetSlidingExpiration(TimeSpan.FromMinutes(10));
+
+                    _cache.Set(cacheKey, cachedData, cacheOptions);
+                }
+
+                _logger.LogInformation("Retrieved stock price for symbol: {Symbol} with {Count} records from cache.", stockSymbol, cachedData?.Count);
+                if (cachedData?.Count == 0)
+                    return NotFound($"No stock price data found for symbol: {stockSymbol}");
+
+                return Ok(cachedData);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while fetching stock price for symbol: {Symbol}", stockSymbol);
+                return StatusCode(500, "Internal server error while fetching stock price.");
+            }
+        }
+
         [HttpGet("Get_Stock_Price/{stockSymbol}/{start_time}/{end_time}")]
         public async Task<IActionResult> GetStockPriceInRange(string stockSymbol, string start_time, string end_time)
         {
@@ -103,7 +297,7 @@ namespace Mobile_Server_Dioxide.Controllers
                 if (startDate > endDate)
                     return BadRequest("Start date must be earlier than or equal to end date.");
 
-                var cacheKey = $"StockPrice_{stockSymbol}";
+                var cacheKey = $"StockPrice_Silver_{stockSymbol}";
 
                 // Check if 365-day cached
                 if (!_cache.TryGetValue(cacheKey, out List<Historical_Prices_Stock_with_TA_Company_Information_Gold>? cachedData))
@@ -111,7 +305,6 @@ namespace Mobile_Server_Dioxide.Controllers
                     cachedData = await _dioxieReadDbContext.HistoricalPricesStockWithTACompanyInformationGold
                         .Where(s => s.Stock_Symbol == stockSymbol)
                         .OrderByDescending(s => s.Date)
-                        .Take(365)
                         .ToListAsync();
 
                     if (cachedData == null || cachedData.Count == 0)
@@ -269,31 +462,108 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
-        [HttpPost("Register_User")]
-        public async Task<IActionResult> RegisterUser([FromBody] RegisterUserDto newUser)
+        [HttpPost("Register_User/Request")]
+        public async Task<IActionResult> RegisterUserRequest([FromBody] RegisterUserDto newUser)
         {
-            try { 
-                if (!ModelState.IsValid)
-                    return BadRequest(ModelState);
+            try
+            {
+                string? sessionId = HttpContext.Session.GetString("SessionId");
+                if (HttpContext.Session.GetString("SessionId") == null)
+                {
+                    sessionId = Guid.NewGuid().ToString();
+                    HttpContext.Session.SetString("SessionId", sessionId);
+               
+                    string currentDateTime = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss");
 
-                // Check if username already exists
-                bool usernameExists = await _dioxieReadDbContext.UserDbos
-                    .AnyAsync(u => u.username == newUser.username);
+                    int randomNumber = new Random().Next(100000000, 999999999);
 
-                if (usernameExists)
-                    return Conflict(new { message = $"Username '{newUser.username}' is already taken." });
+                    if (!ModelState.IsValid)
+                        return BadRequest(ModelState);
 
-                // Check if email already exists
-                bool emailExists = await _dioxieReadDbContext.UserDbos
-                    .AnyAsync(u => u.email == newUser.email);
+                    // Check if username already exists
+                    bool usernameExists = await _dioxieReadDbContext.UserDbos
+                        .AnyAsync(u => u.username == newUser.username);
 
-                if (emailExists)
-                    return Conflict(new { message = $"Email '{newUser.email}' is already registered." });
+                    if (usernameExists)
+                        return Conflict(new { message = $"Username '{newUser.username}' is already taken." });
+
+                    // Check if email already exists
+                    bool emailExists = await _dioxieReadDbContext.UserDbos
+                        .AnyAsync(u => u.email == newUser.email);
+
+                    if (emailExists)
+                        return Conflict(new { message = $"Email '{newUser.email}' is already registered." });
+
+                    _register_user_list_actives.Add(
+                        sessionId,
+                        new Dictionary<string, (string, RegisterUserDto)>
+                        {
+                            { randomNumber.ToString(), (currentDateTime, newUser) }
+                        }
+                    );
+
+                    await Verify_Email_Services.Send_OTP_CodeAsync(randomNumber.ToString(), sessionId, newUser.email, newUser.username);
+
+                    return Ok(new
+                    {
+                        message = "User registration request received. Please check your email for the OTP code.",
+                        sessionId,
+                        username = newUser.username,
+                        email = newUser.email,
+                        otpCode = randomNumber, 
+                        timestamp = currentDateTime
+                    });
+                }
+                else
+                {
+                    _logger.LogWarning("Session ID already exists: {SessionId}", sessionId);
+                    return BadRequest("Session ID already exists. Please wait after next sessions.");
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error while checking user registration request.");
+                return StatusCode(500, "Internal server error while checking user registration request.");
+            }
+        }
+
+        [HttpGet("Register_User/{OTP_Number}/{SessionID}")]
+        public async Task<IActionResult> RegisterUser(string OTP_Number, string SessionID)
+        {
+            try {
+                Console.WriteLine(OTP_Number);
+                Console.WriteLine(SessionID);
+                if (string.IsNullOrWhiteSpace(OTP_Number) || string.IsNullOrWhiteSpace(SessionID))
+                    return BadRequest("OTP Number and Session ID are required.");
+
+                if (!_register_user_list_actives.TryGetValue(SessionID, out var otpEntries) || !otpEntries.TryGetValue(OTP_Number, out var entry))
+                {
+                    _logger.LogWarning("Invalid OTP or Session ID: {SessionID}, {OTP_Number}", SessionID, OTP_Number);
+                    return BadRequest("Invalid OTP Number or Session ID.");
+                }
+                string requestDateTime = entry.Item1;
+
+                if (!DateTime.TryParse(requestDateTime, out var requestDateTimeParsed))
+                {
+                    _logger.LogWarning("Invalid request date time format: {RequestDateTime}", requestDateTime);
+                    return BadRequest("Invalid request date time format.");
+                }
+                if ((DateTime.UtcNow - requestDateTimeParsed).TotalMinutes > 5)
+                {
+                    _logger.LogWarning("OTP expired for Session ID: {SessionID}, OTP Number: {OTP_Number}", SessionID, OTP_Number);
+                    _register_user_list_actives[SessionID].Remove(OTP_Number);
+                    return BadRequest("OTP has expired. Please request a new one.");
+                }
+
+                RegisterUserDto newUser = entry.Item2;
+
+                string encryptedPassword = AES_Services.Encrypt(newUser.password);
 
                 var user = new User_DBO
                 {
                     username = newUser.username,
-                    password = newUser.password,
+                    password = encryptedPassword,
                     email = newUser.email,
                     first_name = newUser.first_name,
                     last_name = newUser.last_name,
@@ -308,6 +578,7 @@ namespace Mobile_Server_Dioxide.Controllers
                 await _dioxieReadDbContext.SaveChangesAsync();
 
                 _logger.LogInformation("User registered successfully: {Username}", user.username);
+                _register_user_list_actives[SessionID].Remove(OTP_Number);
 
                 return Ok(new
                 {
@@ -331,8 +602,9 @@ namespace Mobile_Server_Dioxide.Controllers
                 if (!ModelState.IsValid)
                     return BadRequest(ModelState);
 
-                var user = await _dioxieReadDbContext.UserDbos
-                    .FirstOrDefaultAsync(u => u.username == login.username && u.password == login.password);
+                string encryptedPassword = AES_Services.Encrypt(login.password);
+
+                var user = await _dioxieReadDbContext.UserDbos.FirstOrDefaultAsync(u => u.username == login.username && u.password == encryptedPassword);
 
                 if (user == null)
                     return Unauthorized(new { message = "Invalid username or password." });
@@ -412,5 +684,57 @@ namespace Mobile_Server_Dioxide.Controllers
             }
         }
 
+        [HttpPost("user/{id}/username")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateUsername(int id, [FromBody] UpdateUsernameDto updateUsernameDto)
+        {
+            var user = await _dioxieReadDbContext.UserDbos.FindAsync(id);
+
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            user.username = updateUsernameDto.Username;
+
+            try
+            {
+                await _dioxieReadDbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw;
+            }
+
+            return Ok(new { message = "Username updated successfully." });
+        }
+
+        [HttpPost("user/{id}/name")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<IActionResult> UpdateName(int id, [FromBody] UpdateNameDto updateNameDto)
+        {
+            var user = await _dioxieReadDbContext.UserDbos.FindAsync(id);
+
+            if (user == null)
+            {
+                return NotFound();
+            }
+
+            user.first_name = updateNameDto.FirstName;
+            user.last_name = updateNameDto.LastName;
+
+            try
+            {
+                await _dioxieReadDbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw;
+            }
+
+            return Ok(new { message = "User name updated successfully." });
+        }
     }
 }
