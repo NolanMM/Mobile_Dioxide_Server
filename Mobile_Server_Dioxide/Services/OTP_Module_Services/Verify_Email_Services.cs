@@ -10,7 +10,7 @@ namespace Mobile_Server_Dioxide.Services.OTP_Module_Services
         private static string _almanac_logo_small = "https://drive.usercontent.google.com/download?id=1X9B5QozoZfv8k4BKhmLVen9H-U-zLfcx&authuser=0";
 
         private static readonly string from_email = Environment.GetEnvironmentVariable("SENDER_EMAIL") ?? "capstonedioxieteam@gmail.com";
-        private static readonly string password_smtp = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? "";
+        private static readonly string password_smtp = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? "ywhirygdlsticwxf";
 
         public static string GenerateRandomKey(int length)
         {
@@ -22,7 +22,7 @@ namespace Mobile_Server_Dioxide.Services.OTP_Module_Services
         {
             String messageBody;//from, pass,
 
-            string endpointLink = $"https://localhost:7027/api/mobiledioxie/Register_User/{OTP_CODE}/{OTP_CODE_ID}";
+            string endpointLink = $"https://capstonedioxiemobileserver-cfgqfudtbea6crd2.canadacentral-01.azurewebsites.net/api/mobiledioxie/register_user/{OTP_CODE}/{OTP_CODE_ID}";
 
             messageBody = CreateEmailBody(OTP_CODE, endpointLink, username);
 

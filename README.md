@@ -2,6 +2,8 @@
 
 This project is an ASP.NET Core Web API that provides financial data, including stock prices, news sentiment, and macroeconomic data. It also includes user management features, such as registration, login, and user profile updates.
 
+**Link: [Mobile Server Dioxide](https://capstonedioxiemobileserver-cfgqfudtbea6crd2.canadacentral-01.azurewebsites.net/swagger/index.html)**
+
 ## Features
 
 -   **Stock Data:** Get historical stock prices for various symbols, with different tiers of data available (gold and silver).
